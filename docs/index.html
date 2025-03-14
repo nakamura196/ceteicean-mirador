@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CETEIcean Example</title>
+    <script src="https://unpkg.com/mirador@3.3.0/dist/mirador.min.js"></script>
+    <link rel="stylesheet" href="https://teic.github.io/CETEIcean/css/CETEIcean.css" />
+    <style>
+      /* レイアウトのスタイル */
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+      }
+      .container {
+        display: flex;
+        height: 100vh;
+        width: 100%;
+      }
+      #mirador-viewer {
+        width: 50%;
+        position: relative;
+        height: 100%;
+      }
+      #tei-content {
+        /* 縦書きスタイル */
+        writing-mode: vertical-rl;
+        text-orientation: upright;
+        height: 100%;
+        margin: 0 auto;
+        overflow-x: auto;
+        font-family: "Noto Serif JP", serif;
+        line-height: 1.8;
+        width: 100%;
+      }
+      /* ページ遷移アイコンのスタイル */
+      tei-pb {
+        display: inline-block;
+        cursor: pointer;
+        color: #1967d2;
+        margin: 0.5em 0;
+        text-orientation: sideways;
+      }
+      tei-pb:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- コンテナを追加して左右に分割 -->
+    <div class="container">
+      <!-- 左側：Miradorビューア -->
+      <div id="mirador-viewer"></div>
+
+      <!-- 右側：縦書きテキスト -->
+      
+        <div id="tei-content"></div>
+    </div>
+
+    <script src="https://teic.github.io/CETEIcean/js/CETEI.js"></script>
+    <script>
+      // DOMが完全に読み込まれた後に実行するように変更
+      document.addEventListener("DOMContentLoaded", function () {
+        // CETEIceanのインスタンスを作成
+        const ct = new CETEI();
+        
+        // Miradorインスタンスを格納する変数
+        let miradorInstance;
+
+        // ページ遷移関数
+        function goToPage(canvasUri) {
+          if (miradorInstance) {
+            miradorInstance.store.dispatch(
+              Mirador.actions.setCanvas('window-1', canvasUri)
+            );
+          }
+        }
+
+        ct.addBehaviors({
+          tei: {
+            // 不要な要素を非表示
+            graphic: () => document.createDocumentFragment(),
+            figure: () => document.createDocumentFragment(),
+            
+            // 改行要素
+            lb: function (el) {
+              let lb = document.createElement("tei-lb");
+              if (el.hasAttribute("n")) {
+                lb.setAttribute("n", el.getAttribute("n"));
+              }
+              return lb;
+            },
+            
+            // pbタグの処理
+            pb: function (el) {
+              let pb = document.createElement("tei-pb");
+              
+              // 属性を引き継ぐ
+              if (el.hasAttribute("n")) {
+                pb.setAttribute("n", el.getAttribute("n"));
+              }
+              
+              // corresp属性からzoneIdを取得
+              const corresp = el.getAttribute("corresp");
+              if (corresp) {
+                const zoneId = corresp.replace('#', '');
+                pb.setAttribute("data-zone-id", zoneId);
+              }
+              
+              // ページ番号テキスト
+              const pageNum = el.getAttribute("n") || "";
+              pb.textContent = `[Page ${pageNum}]`;
+              
+              // クリックイベント
+              pb.addEventListener("click", function() {
+                const zoneId = this.getAttribute("data-zone-id");
+                if (zoneId) {
+                  const zoneElement = document.querySelector(`tei-zone[id="${zoneId}"]`);
+                  if (zoneElement) {
+                    const surfaceElement = zoneElement.closest("tei-surface");
+                    if (surfaceElement && surfaceElement.hasAttribute("sameAs")) {
+                      goToPage(surfaceElement.getAttribute("sameAs"));
+                    }
+                  }
+                }
+              });
+              
+              return pb;
+            }
+          },
+        });
+
+        // TEIファイルを読み込む
+        ct.getHTML5(
+          "https://kouigenjimonogatari.github.io/xml/xsl/01.xml",
+          function (data) {
+            // 読み込んだデータをDOMに追加
+            document.getElementById("tei-content").appendChild(data);
+
+            // マニフェストIDを取得
+            const facsimileElement = data.querySelector("tei-facsimile");
+            const manifestId = facsimileElement?.getAttribute("sameAs");
+
+            if (manifestId) {
+              // Miradorを初期化
+              miradorInstance = Mirador.viewer({
+                id: "mirador-viewer",
+                windows: [
+                  {
+                    id: 'window-1', // 固定のウィンドウID
+                    manifestId: manifestId,
+                    canvasIndex: 0,
+                    thumbnailNavigationPosition: "far-bottom",
+                  },
+                ],
+                window: {
+                  allowClose: false,
+                  allowMaximize: false,
+                  allowFullscreen: false,
+                },
+                workspaceControlPanel: {
+                  enabled: false,
+                },
+              });
+            }
+          }
+        );
+      });
+    </script>
+  </body>
+</html>
